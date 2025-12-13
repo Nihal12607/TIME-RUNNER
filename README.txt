@@ -1,0 +1,1 @@
+Time Runner is a 2D endless runner–style platformer built using Python and Pygame. The player runs through an infinite, procedurally generated world filled with platforms, fire traps, and healing items while trying to survive as long as possible and score high.

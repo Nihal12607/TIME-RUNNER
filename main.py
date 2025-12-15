@@ -1,9 +1,10 @@
 import pygame as pg
 import random
+import os
 
 pg.init()
 
-# ==================== CONSTANTS ====================
+# ===============CONSTANTS 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 400
 FPS = 60
@@ -41,26 +42,35 @@ class Player(pg.sprite.Sprite):
         self.load_sprites()
     
     def load_sprites(self):
-        try:
-            idle_sheet = pg.image.load("assets/MainCharacters/VirtualGuy/idle.png").convert_alpha()
+        # Load idle animation sheet if present, otherwise use fallback surface
+        idle_path = "assets/MainCharacters/VirtualGuy/idle.png"
+        if os.path.exists(idle_path):
+            idle_sheet = pg.image.load(idle_path).convert_alpha()
             _, _, w, h = idle_sheet.get_rect()
-            for i in range(w // self.size):
+            for i in range(max(1, w // self.size)):
                 surf = idle_sheet.subsurface(i * self.size, 0, self.size, self.size)
                 self.idle_frames.append(surf)
-            
-            run_sheet = pg.image.load("assets/MainCharacters/VirtualGuy/run.png").convert_alpha()
-            _, _, rw, rh = run_sheet.get_rect()
-            for i in range(rw // self.size):
-                surf = run_sheet.subsurface(i * self.size, 0, self.size, self.size)
-                self.run_frames.append(surf)
-            
-            self.jump_image = pg.image.load("assets/MainCharacters/VirtualGuy/jump.png").convert_alpha()
-        except:
-            # Fallback
+        else:
             self.idle_frames = [pg.Surface((self.size, self.size))]
             self.idle_frames[0].fill((0, 100, 255))
+
+        # Load run animation sheet if present, otherwise use fallback surface
+        run_path = "assets/MainCharacters/VirtualGuy/run.png"
+        if os.path.exists(run_path):
+            run_sheet = pg.image.load(run_path).convert_alpha()
+            _, _, rw, rh = run_sheet.get_rect()
+            for i in range(max(1, rw // self.size)):
+                surf = run_sheet.subsurface(i * self.size, 0, self.size, self.size)
+                self.run_frames.append(surf)
+        else:
             self.run_frames = [pg.Surface((self.size, self.size))]
             self.run_frames[0].fill((0, 150, 255))
+
+        # Load jump image if present, otherwise use fallback
+        jump_path = "assets/MainCharacters/VirtualGuy/jump.png"
+        if os.path.exists(jump_path):
+            self.jump_image = pg.image.load(jump_path).convert_alpha()
+        else:
             self.jump_image = pg.Surface((self.size, self.size))
             self.jump_image.fill((100, 200, 255))
     
@@ -149,35 +159,46 @@ class FireTrap(pg.sprite.Sprite):
         """Load fire images from assets. Prefer a 32x32 spritesheet and split into frames using subsurface.
         Fallback to single on/off/hit images if necessary."""
         self.frames = []
-        try:
-            sheet = pg.image.load("assets/Traps/Fire/on.png").convert_alpha()
+        # Try to load a spritesheet of frames
+        sheet_path = "assets/Traps/Fire/on.png"
+        if os.path.exists(sheet_path):
+            sheet = pg.image.load(sheet_path).convert_alpha()
             sw, sh = sheet.get_size()
+            # iterate in 32x32 tiles but ensure we do not go out of bounds
             for ty in range(0, sh, 32):
                 for tx in range(0, sw, 32):
-                    try:
+                    if tx + 32 <= sw and ty + 32 <= sh:
                         frame = sheet.subsurface((tx, ty, 32, 32)).copy()
                         self.frames.append(pg.transform.scale(frame, (self.size, self.size)))
-                    except Exception:
-                        pass
-        except Exception:
-            self.frames = []
 
-        # Fallback single images
-        try:
-            self.fire_on = pg.image.load("assets/Traps/Fire/on.png").convert_alpha()
-            self.fire_on = pg.transform.scale(self.fire_on, (self.size, self.size))
-        except:
+        # Fallback single images (use same 'on' path for single-frame animation when available)
+        on_path = "assets/Traps/Fire/on.png"
+        off_path = "assets/Traps/Fire/off.png"
+        hit_path = "assets/Traps/Fire/hit.png"
+
+        if os.path.exists(on_path):
+            self.fire_on = pg.transform.scale(pg.image.load(on_path).convert_alpha(), (self.size, self.size))
+        else:
             self.fire_on = None
-        try:
-            self.fire_off = pg.image.load("assets/Traps/Fire/off.png").convert_alpha()
-            self.fire_off = pg.transform.scale(self.fire_off, (self.size, self.size))
-        except:
+
+        if os.path.exists(off_path):
+            self.fire_off = pg.transform.scale(pg.image.load(off_path).convert_alpha(), (self.size, self.size))
+        else:
             self.fire_off = None
-        try:
-            self.fire_hit = pg.image.load("assets/Traps/Fire/hit.png").convert_alpha()
-            self.fire_hit = pg.transform.scale(self.fire_hit, (self.size, self.size))
-        except:
+
+        if os.path.exists(hit_path):
+            self.fire_hit = pg.transform.scale(pg.image.load(hit_path).convert_alpha(), (self.size, self.size))
+        else:
             self.fire_hit = None
+
+        # If the spritesheet produced only a single frame, but we have on/off images,
+        # create a simple two-frame animation so the fire appears animated.
+        if len(self.frames) <= 1:
+            if self.fire_on and self.fire_off:
+                self.frames = [self.fire_on, self.fire_off]
+            elif self.fire_on:
+                # duplicate single frame to keep indexing logic simple
+                self.frames = [self.fire_on]
     
     def draw(self, surface, world_x, reveal=False):
         self.rect.x = self.world_x - world_x
@@ -191,12 +212,14 @@ class FireTrap(pg.sprite.Sprite):
                 if self.frames:
                     if not hasattr(self, 'anim_index'):
                         self.anim_index = 0
-                    self.anim_index += 0.3
+                    # Slower animation: smaller increment advances frames less frequently
+                    self.anim_index += 0.08
                     idx = int(self.anim_index) % len(self.frames)
                     surface.blit(self.frames[idx], self.rect)
                 else:
                     # Alternate between on/off for simple animation
-                    self.animation_frame += 0.1
+                    # Slower toggle between on/off images
+                    self.animation_frame += 0.04
                     if self.fire_on:
                         if int(self.animation_frame) % 2 == 0:
                             surface.blit(self.fire_on, self.rect)
@@ -236,12 +259,11 @@ class HealingItem(pg.sprite.Sprite):
     
     def load_heal_image(self):
         """Load health item from assets"""
-        try:
-            # Try to load a fruit or item
-            heal_img = pg.image.load("assets/Items/Fruits/Apple.png").convert_alpha()
-            self.heal_image = pg.transform.scale(heal_img, (self.size, self.size))
-        except:
-            # Fallback: green circle
+        heart_path = "assets/heart.png"
+        if os.path.exists(heart_path):
+            self.heal_image = pg.image.load(heart_path).convert_alpha()
+        else:
+            # Fallback: no image, draw a green circle in draw()
             self.heal_image = None
     
     def draw(self, surface, world_x):
@@ -290,25 +312,31 @@ class HealingItem(pg.sprite.Sprite):
 # ===========LEVEL CLASS
 class Level:
     def __init__(self):
-        try:
-            self.bg_tile = pg.image.load("assets/Background/Blue.png").convert_alpha()
+        bg_path = "assets/Background/Blue.png"
+        if os.path.exists(bg_path):
+            self.bg_tile = pg.image.load(bg_path).convert_alpha()
             _, _, self.bg_w, self.bg_h = self.bg_tile.get_rect()
-        except:
+        else:
             self.bg_tile = pg.Surface((200, 200))
             self.bg_tile.fill((50, 150, 255))
             self.bg_w, self.bg_h = 200, 200
-        
-        try:
-            terrain_sheet = pg.image.load("assets/Terrain/Terrain.png").convert_alpha()
-            self.ground_tile = terrain_sheet.subsurface(96, 0, 48, 64).copy()
-        except:
+
+        terrain_path = "assets/Terrain/Terrain.png"
+        if os.path.exists(terrain_path):
+            terrain_sheet = pg.image.load(terrain_path).convert_alpha()
+            sw, sh = terrain_sheet.get_size()
+            # Ensure subsurface region is available; otherwise fallback
+            if sw >= 96 + 48 and sh >= 64:
+                self.ground_tile = terrain_sheet.subsurface(96, 0, 48, 64).copy()
+            else:
+                self.ground_tile = pg.Surface((48, 64))
+                self.ground_tile.fill((100, 200, 100))
+        else:
             self.ground_tile = pg.Surface((48, 64))
             self.ground_tile.fill((100, 200, 100))
+
         # Precompute a rotated tile for vertical wall drawing
-        try:
-            self.wall_tile = pg.transform.rotate(self.ground_tile, 90)
-        except Exception:
-            self.wall_tile = self.ground_tile
+        self.wall_tile = pg.transform.rotate(self.ground_tile, 90)
         
         # Block size (width and height) used for platform placement
         self.tile_w = 48  # full block width
